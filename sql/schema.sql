@@ -1,0 +1,10 @@
+create extension if not exists pgcrypto;
+create extension if not exists pg_cron with schema extensions;
+create table if not exists public.surveys (id uuid primary key default gen_random_uuid(),title text not null,description text,questions jsonb not null default '[]'::jsonb,is_active boolean not null default true,created_at timestamptz not null default now());
+create table if not exists public.survey_responses (id uuid primary key default gen_random_uuid(),survey_id uuid not null references public.surveys(id) on delete cascade,name text not null,email text not null,phone text,answers jsonb not null default '{}'::jsonb,submitted_at timestamptz not null default now(),expires_at timestamptz not null default (now()+interval '7 days'));
+alter table public.surveys enable row level security;
+alter table public.survey_responses enable row level security;
+create index if not exists survey_responses_survey_submitted_idx on public.survey_responses(survey_id,submitted_at desc);
+create index if not exists survey_responses_expires_idx on public.survey_responses(expires_at);
+select cron.unschedule(jobid) from cron.job where jobname='survey-response-cleanup';
+select cron.schedule('survey-response-cleanup','0 * * * *', $$delete from public.survey_responses where expires_at <= now()$$);
