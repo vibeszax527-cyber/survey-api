@@ -1,9 +1,13 @@
-import os,json,hmac,hashlib,base64,time,urllib.request,urllib.parse
+import os,json,hmac,hashlib,base64,time,urllib.request,urllib.parse,urllib.error
 from http.server import BaseHTTPRequestHandler
 MAX_BODY=256*1024
 
 def json_out(h,status,data,extra=None):
- h.send_response(status); h.send_header('Content-Type','application/json'); h.send_header('Cache-Control','no-store');
+ h.send_response(status); h.send_header('Content-Type','application/json'); h.send_header('Cache-Control','no-store')
+ origin=os.environ.get('ALLOWED_ORIGIN','').strip()
+ request_origin=h.headers.get('Origin','')
+ if origin and (origin=='*' or request_origin==origin):
+  h.send_header('Access-Control-Allow-Origin', request_origin if request_origin else origin); h.send_header('Vary','Origin')
  if extra:
   for k,v in extra.items(): h.send_header(k,v)
  h.end_headers(); h.wfile.write(json.dumps(data,separators=(',',':')).encode())
@@ -16,7 +20,8 @@ def body(h):
 def supabase(path,method='GET',data=None,params=None):
  base=os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/'+path
  if params: base+='?'+urllib.parse.urlencode(params,doseq=True)
- req=urllib.request.Request(base,method=method,headers={'apikey':os.environ['SUPABASE_SERVICE_ROLE_KEY'],'Authorization':'Bearer '+os.environ['SUPABASE_SERVICE_ROLE_KEY'],'Content-Type':'application/json','Prefer':'return=representation'})
+ key=os.environ.get('SUPABASE_SECRET_KEY') or os.environ['SUPABASE_SERVICE_ROLE_KEY']
+ req=urllib.request.Request(base,method=method,headers={'apikey':key,'Authorization':'Bearer '+key,'Content-Type':'application/json','Prefer':'return=representation'})
  if data is not None: req.data=json.dumps(data).encode()
  try:
   with urllib.request.urlopen(req,timeout=15) as r: return r.status,json.loads(r.read() or b'null')
@@ -27,7 +32,7 @@ def token(username):
  now=int(time.time()); p={'sub':username,'iat':now,'exp':now+43200}; raw=base64.urlsafe_b64encode(json.dumps(p,separators=(',',':')).encode()).rstrip(b'=').decode(); sig=base64.urlsafe_b64encode(hmac.new(os.environ['ADMIN_TOKEN_SECRET'].encode(),raw.encode(),hashlib.sha256).digest()).rstrip(b'=').decode(); return raw+'.'+sig
 
 def admin(h):
- a=h.headers.get('Authorization','');
+ a=h.headers.get('Authorization','')
  if not a.startswith('Bearer '): return False
  try:
   raw,s=a[7:].split('.',1); expected=base64.urlsafe_b64encode(hmac.new(os.environ['ADMIN_TOKEN_SECRET'].encode(),raw.encode(),hashlib.sha256).digest()).rstrip(b'=').decode()
