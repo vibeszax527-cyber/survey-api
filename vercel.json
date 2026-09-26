@@ -1,0 +1,1 @@
+{"version":2,"rewrites":[{"source":"/s/:id","destination":"/frontend/s/index.html?id=:id"},{"source":"/admin","destination":"/admin/index.html"}],"crons":[{"path":"/api/cleanup","schedule":"0 * * * *"}]}
